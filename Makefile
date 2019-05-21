@@ -14,6 +14,7 @@
 
 CMDS=nfsplugin
 all: build
+
 fmt:
 	gofmt -s -l -w ./cmd/
 	gofmt -s -l -w ./pkg/

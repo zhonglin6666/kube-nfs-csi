@@ -5,6 +5,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: csi-attacher-nfsplugin
+  namespace: kube-nfs-csi
   labels:
     app: csi-attacher-nfsplugin
 spec:
@@ -19,6 +20,7 @@ kind: StatefulSet
 apiVersion: apps/v1beta1
 metadata:
   name: csi-attacher-nfsplugin
+  namespace: kube-nfs-csi
 spec:
   serviceName: "csi-attacher"
   replicas: 1
@@ -29,7 +31,21 @@ spec:
     spec:
       serviceAccount: csi-attacher
       containers:
+        - name: csi-provisioner
+          image: zhangzhonglin/k8scsi-provisioner:v1.1.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
         - name: csi-attacher
+          #image: zhangzhonglin/k8scsi-attacher:v1.1.0
           image: quay.io/k8scsi/csi-attacher:v1.0.1
           args:
             - "--v=5"
@@ -43,7 +59,12 @@ spec:
               mountPath: /csi
 
         - name: nfs
-          image: quay.io/k8scsi/nfsplugin:v1.0.0
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          image: zhangzhonglin/nfscsi-nfsplugin:v1.0.0
           args :
             - "--nodeid=$(NODE_ID)"
             - "--endpoint=$(CSI_ENDPOINT)"
@@ -58,6 +79,12 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /plugin
+#            - name: nfs-client-root
+#              mountPath: /persistentvolumes
       volumes:
         - name: socket-dir
           emptyDir:
+#        - name: nfs-client-root
+#          nfs:
+#            server: 192.168.73.184
+#            path: /nfs/data

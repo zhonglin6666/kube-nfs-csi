@@ -24,9 +24,8 @@ import (
 )
 
 var (
-	endpoint      string
-	nodeID        string
-	containerized bool
+	endpoint string
+	nodeID   string
 )
 
 func init() {
@@ -34,7 +33,6 @@ func init() {
 }
 
 func main() {
-
 	flag.CommandLine.Parse([]string{})
 
 	cmd := &cobra.Command{
@@ -53,9 +51,6 @@ func main() {
 	cmd.PersistentFlags().StringVar(&endpoint, "endpoint", "", "CSI endpoint")
 	cmd.MarkPersistentFlagRequired("endpoint")
 
-	cmd.PersistentFlags().BoolVar(&containerized, "containerized", false, "run in container")
-	cmd.MarkPersistentFlagRequired("containerized")
-
 	cmd.ParseFlags(os.Args[1:])
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s", err.Error())
@@ -67,5 +62,5 @@ func main() {
 
 func handle() {
 	d := nfs.NewDriver(nodeID, endpoint)
-	d.Run(containerized)
+	d.Run()
 }

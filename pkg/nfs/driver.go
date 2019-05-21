@@ -21,9 +21,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
-	//"k8s.io/kubernetes/pkg/util/mount"
-	//"k8s.io/kubernetes/pkg/util/nsenter"
-	//"k8s.io/utils/exec"
 
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
 )
@@ -32,8 +29,9 @@ type driver struct {
 	csiDriver *csicommon.CSIDriver
 	endpoint  string
 
-	//ids *identityServer
+	ids   *csicommon.DefaultIdentityServer
 	ns    *nodeServer
+	cs    *ControllerServer
 	cap   []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 }
@@ -69,37 +67,25 @@ func NewDriver(nodeID, endpoint string) *driver {
 	return d
 }
 
-func NewNodeServer(d *driver, containerized bool) (*nodeServer, error) {
-	// mounter := mount.New("")
-
-	//if containerized {
-	//	ne, err := nsenter.NewNsenter(nsenter.DefaultHostRootFsPath, exec.New())
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//	mounter = mount.NewNsenterMounter("", ne)
-	//}
-	glog.Infof("new node server ")
-
+func NewNodeServer(d *driver) (*nodeServer, error) {
 	return &nodeServer{
 		DefaultNodeServer: csicommon.NewDefaultNodeServer(d.csiDriver),
-		// mounter:           mounter,
 	}, nil
 }
 
-func (d *driver) Run(containerized bool) {
+func (d *driver) Run() {
 	var err error
 	s := csicommon.NewNonBlockingGRPCServer()
 
-	d.ns, err = NewNodeServer(d, containerized)
+	d.ns, err = NewNodeServer(d)
 	if err != nil {
 		glog.Infof("failed to start node server, err %v\n", err)
 		os.Exit(-1)
 	}
 
-	s.Start(d.endpoint,
-		csicommon.NewDefaultIdentityServer(d.csiDriver),
-		getControllerServer(d.csiDriver),
-		d.ns)
+	d.ids = csicommon.NewDefaultIdentityServer(d.csiDriver)
+	d.cs = getControllerServer(d.csiDriver)
+
+	s.Start(d.endpoint, d.ids, d.cs, d.ns)
 	s.Wait()
 }

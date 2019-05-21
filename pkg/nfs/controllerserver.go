@@ -1,8 +1,10 @@
 package nfs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
@@ -13,6 +15,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/kubernetes/pkg/util/mount"
 
 	"github.com/zhonglin6666/kube-nfs-csi/pkg/util"
 )
@@ -31,7 +34,7 @@ type nfsVolume struct {
 	VolName            string `json:"volName"`
 	VolID              string `json:"volID"`
 	Server             string `json:"server"`
-	Path               string `json:"path"`
+	Share              string `json:"share"`
 	Provisioner        string `json:"provisioner"`
 	VolSize            int64  `json:"volSize"`
 	AdminID            string `json:"adminId"`
@@ -41,17 +44,17 @@ type nfsVolume struct {
 	ClusterID          string `json:"clusterId"`
 }
 
-func (cs ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func getControllerServer(csiDriver *csicommon.CSIDriver) ControllerServer {
-	return ControllerServer{
+func getControllerServer(csiDriver *csicommon.CSIDriver) *ControllerServer {
+	return &ControllerServer{
 		csicommon.NewDefaultControllerServer(csiDriver),
 	}
 }
 
-func (cs ControllerServer) validateVolumeReq(req *csi.CreateVolumeRequest) error {
+func (cs *ControllerServer) validateVolumeReq(req *csi.CreateVolumeRequest) error {
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.Infof("invalid create volume req: %v", protosanitizer.StripSecrets(req))
 		return err
@@ -66,13 +69,11 @@ func (cs ControllerServer) validateVolumeReq(req *csi.CreateVolumeRequest) error
 	return nil
 }
 
-func (cs ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	glog.Infof("controller server create volume begin req: %v", req)
 	if err := cs.validateVolumeReq(req); err != nil {
 		return nil, err
 	}
-
-	glog.Infof("Create volume pass to validateVolumeReq 11111")
 
 	util.VolumeNameMutex.LockKey(req.GetName())
 	defer func() {
@@ -81,46 +82,44 @@ func (cs ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		}
 	}()
 
-	//// Need to check for already existing volume name, and if found
-	//// check for the requested capacity and already allocated capacity
-	//if exVol, err := getRBDVolumeByName(req.GetName()); err == nil {
-	//	// Since err is nil, it means the volume with the same name already exists
-	//	// need to check if the size of existing volume is the same as in new
-	//	// request
-	//	if exVol.VolSize >= req.GetCapacityRange().GetRequiredBytes() {
-	//		// existing volume is compatible with new request and should be reused.
-	//
-	//		if err = storeVolumeMetadata(exVol, cs.MetadataStore); err != nil {
-	//			return nil, status.Error(codes.Internal, err.Error())
-	//		}
-	//
-	//		// TODO (sbezverk) Do I need to make sure that RBD volume still exists?
-	//		return &csi.CreateVolumeResponse{
-	//			Volume: &csi.Volume{
-	//				VolumeId:      exVol.VolID,
-	//				CapacityBytes: exVol.VolSize,
-	//				VolumeContext: req.GetParameters(),
-	//			},
-	//		}, nil
-	//	}
-	//	return nil, status.Errorf(codes.AlreadyExists, "Volume with the same name: %s but with different size already exist", req.GetName())
-	//}
-
-	glog.Infof("Create volume before to parseVolCreateRequest")
 	nfsVol, err := parseVolCreateRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	glog.Infof("Create volume pass to parseVolCreateRequest")
 
-	// Check if there is already RBD image with requested name
-	err = cs.checkRBDStatus(nfsVol, req, int(nfsVol.VolSize))
+	// Check if there is already nfs with requested name
+	err = cs.checkNfsStatus(nfsVol, req, int(nfsVol.VolSize))
 	if err != nil {
 		return nil, err
 	}
-	// store volume size in  bytes (snapshot and check existing volume needs volume
-	// size in bytes)
-	//rbdVol.VolSize = rbdVol.VolSize * util.MiB
+	//store volume size in  bytes (snapshot and check existing volume needs volume
+	//size in bytes)
+	// nfsVol.VolSize = nfsVol.VolSize * util.MiB
+
+	//mounter := mount.New("")
+	//err = mounter.Mount(fmt.Sprintf("%s:%s", nfsVol.Server, nfsVol.Path), mountPath, "nfs", []string{})
+	//if err != nil {
+	//	if os.IsPermission(err) {
+	//		return nil, status.Error(codes.PermissionDenied, err.Error())
+	//	}
+	//	if strings.Contains(err.Error(), "invalid argument") {
+	//		return nil, status.Error(codes.InvalidArgument, err.Error())
+	//	}
+	//	return nil, status.Error(codes.Internal, err.Error())
+	//}
+
+	mounter := mount.New("")
+	err = mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
+	if err != nil {
+		if os.IsPermission(err) {
+			return nil, status.Error(codes.PermissionDenied, err.Error())
+		}
+		if strings.Contains(err.Error(), "invalid argument") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	glog.Infof("zzlin mount success")
 
 	//pvName := strings.Join([]string{nfsVol.VolName}, "-")
 	fullPath := filepath.Join(mountPath, nfsVol.VolID)
@@ -128,50 +127,45 @@ func (cs ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
 	os.Chmod(fullPath, 0777)
+	glog.Infof("create volume path: %v", fullPath)
 
-	// path := filepath.Join(nfsVol.Path, pvName)
+	err = mount.CleanupMountPoint(mountPath, mounter, false)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	glog.Infof("zzlin umount success")
+
+	volumeContext := req.GetParameters()
+	if _, ok := volumeContext["share"]; ok {
+		volumeContext["share"] = fmt.Sprintf("%s/%s", nfsVol.Share, nfsVol.VolID)
+	}
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId: nfsVol.VolID,
+			VolumeId:      nfsVol.VolID,
+			CapacityBytes: oneGB * 10,
+			VolumeContext: req.GetParameters(),
 		},
 	}, nil
 }
 
 func parseVolCreateRequest(req *csi.CreateVolumeRequest) (*nfsVolume, error) {
-	isMultiNode := false
-
-	for _, cap := range req.VolumeCapabilities {
-		// RO modes need to be handled indepedently (ie right now even if access mode is RO, they'll be RW upon attach)
-		if cap.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
-			isMultiNode = true
-		}
-	}
-
-	// We want to fail early if the user is trying to create a RWX on a non-block type device
-	if isMultiNode {
-		return nil, status.Error(codes.InvalidArgument, "multi node access modes are only supported on rbd `block` type volumes")
-	}
-
-	// if it's NOT SINGLE_NODE_WRITER and it's BLOCK we'll set the parameter to ignore the in-use checks
 	nfsVol, err := getnfsVolumeOptions(req.GetParameters(), true)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Generating Volume Name and Volume ID, as according to CSI spec they MUST be different
-	volName := req.GetName()
-	uniqueID := uuid.NewUUID().String()
-	nfsVol.VolName = volName
-	volumeID := "csi-nfs-vol-" + uniqueID
+	nfsVol.VolName = req.GetName()
+	volumeID := "csi-nfs-vol-" + uuid.NewUUID().String()
 	nfsVol.VolID = volumeID
 	// Volume Size - Default is 1 GiB
-	//volSizeBytes := int64(oneGB)
-	//if req.GetCapacityRange() != nil {
-	//	volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
-	//}
+	volSizeBytes := int64(oneGB)
+	if req.GetCapacityRange() != nil {
+		volSizeBytes = req.GetCapacityRange().GetRequiredBytes()
+	}
 
-	//nfsVol.VolSize = volSizeBytes
+	nfsVol.VolSize = volSizeBytes
 
 	return nfsVol, nil
 }
@@ -188,15 +182,15 @@ func getnfsVolumeOptions(volOptions map[string]string, disableInUseChecks bool) 
 		return nil, errors.New("missing required parameter pool")
 	}
 
-	nfsVol.Path, ok = volOptions["path"]
+	nfsVol.Share, ok = volOptions["share"]
 	if !ok {
-		return nil, errors.New("missing required parameter path")
+		return nil, errors.New("missing required parameter share")
 	}
 
 	return nfsVol, nil
 }
 
-func (cs *ControllerServer) checkRBDStatus(nfsVol *nfsVolume, req *csi.CreateVolumeRequest, volSizeMiB int) error {
+func (cs *ControllerServer) checkNfsStatus(nfsVol *nfsVolume, req *csi.CreateVolumeRequest, volSizeMiB int) error {
 	// TODO
 
 	return nil
@@ -204,7 +198,7 @@ func (cs *ControllerServer) checkRBDStatus(nfsVol *nfsVolume, req *csi.CreateVol
 
 // DeleteVolume deletes the volume in backend and removes the volume metadata
 // from store
-func (cs ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.Warningf("invalid delete volume req: %v", protosanitizer.StripSecrets(req))
 		return nil, err
@@ -246,4 +240,12 @@ func (cs ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
+}
+
+func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	return &csi.ControllerPublishVolumeResponse{}, nil
+}
+
+func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }

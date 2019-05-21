@@ -3,12 +3,13 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: csi-nodeplugin
-
+  namespace: kube-nfs-csi
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-nodeplugin
+  namespace: kube-nfs-csi
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -24,10 +25,11 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-nodeplugin
+  namespace: kube-nfs-csi
 subjects:
   - kind: ServiceAccount
     name: csi-nodeplugin
-    namespace: default
+    namespace: kube-nfs-csi
 roleRef:
   kind: ClusterRole
   name: csi-nodeplugin

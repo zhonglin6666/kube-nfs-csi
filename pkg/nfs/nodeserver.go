@@ -18,6 +18,7 @@ package nfs
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 	"os"
 	"strings"
 
@@ -35,6 +36,7 @@ type nodeServer struct {
 }
 
 func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	glog.Infof("zzlin NodePublishVolume begin...")
 	targetPath := req.GetTargetPath()
 	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
 	if err != nil {
@@ -60,6 +62,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	s := req.GetVolumeContext()["server"]
 	ep := req.GetVolumeContext()["share"]
 	source := fmt.Sprintf("%s:%s", s, ep)
+	glog.Info("zzlin publish volume target: %v  server: %v", source)
 
 	mounter := mount.New("")
 	err = mounter.Mount(source, targetPath, "nfs", mo)
@@ -77,6 +80,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 }
 
 func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	glog.Infof("zzlin NodeUnpublishVolume begin...")
 	targetPath := req.GetTargetPath()
 	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
 
@@ -100,10 +104,12 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 }
 
 func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	glog.Infof("zzlin NodeUnstageVolume begin...")
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
 func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	glog.Infof("zzlin NodeStageVolume begin...")
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
