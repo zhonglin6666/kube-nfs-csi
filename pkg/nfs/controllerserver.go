@@ -48,7 +48,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func getControllerServer(csiDriver *csicommon.CSIDriver) *ControllerServer {
+func NewControllerServer(csiDriver *csicommon.CSIDriver) *ControllerServer {
 	return &ControllerServer{
 		csicommon.NewDefaultControllerServer(csiDriver),
 	}
@@ -70,7 +70,7 @@ func (cs *ControllerServer) validateVolumeReq(req *csi.CreateVolumeRequest) erro
 }
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	glog.Infof("controller server create volume begin req: %v", req)
+	glog.Infof("controller server create volume begin request: %v", req)
 	if err := cs.validateVolumeReq(req); err != nil {
 		return nil, err
 	}
@@ -92,21 +92,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, err
 	}
-	//store volume size in  bytes (snapshot and check existing volume needs volume
-	//size in bytes)
-	// nfsVol.VolSize = nfsVol.VolSize * util.MiB
-
-	//mounter := mount.New("")
-	//err = mounter.Mount(fmt.Sprintf("%s:%s", nfsVol.Server, nfsVol.Path), mountPath, "nfs", []string{})
-	//if err != nil {
-	//	if os.IsPermission(err) {
-	//		return nil, status.Error(codes.PermissionDenied, err.Error())
-	//	}
-	//	if strings.Contains(err.Error(), "invalid argument") {
-	//		return nil, status.Error(codes.InvalidArgument, err.Error())
-	//	}
-	//	return nil, status.Error(codes.Internal, err.Error())
-	//}
 
 	mounter := mount.New("")
 	err = mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
@@ -119,31 +104,43 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	glog.Infof("zzlin mount success")
 
-	//pvName := strings.Join([]string{nfsVol.VolName}, "-")
+	defer func() {
+		err = mount.CleanupMountPoint(mountPath, mounter, false)
+		if err != nil {
+			glog.Errorf("umount %v error: %v", mountPath, err)
+		}
+	}()
+
 	fullPath := filepath.Join(mountPath, nfsVol.VolID)
+
+	if _, err := os.Stat(fullPath); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
+		glog.Warningf("path %s already exist, deletion skipped", fullPath)
+		return nil, nil
+	}
+
 	if err := os.MkdirAll(fullPath, 0777); err != nil {
 		return nil, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
-	os.Chmod(fullPath, 0777)
-	glog.Infof("create volume path: %v", fullPath)
-
-	err = mount.CleanupMountPoint(mountPath, mounter, false)
-	if err != nil {
+	if err := os.Chmod(fullPath, 0777); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	glog.Infof("zzlin umount success")
+	glog.Infof("create volume path: %v", fullPath)
 
 	volumeContext := req.GetParameters()
 	if _, ok := volumeContext["share"]; ok {
 		volumeContext["share"] = fmt.Sprintf("%s/%s", nfsVol.Share, nfsVol.VolID)
 	}
+	glog.Infof("create volume success, path: %v", fullPath)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      nfsVol.VolID,
-			CapacityBytes: oneGB * 10,
+			CapacityBytes: nfsVol.VolSize,
 			VolumeContext: req.GetParameters(),
 		},
 	}, nil
@@ -171,7 +168,6 @@ func parseVolCreateRequest(req *csi.CreateVolumeRequest) (*nfsVolume, error) {
 }
 
 func getnfsVolumeOptions(volOptions map[string]string, disableInUseChecks bool) (*nfsVolume, error) {
-	glog.Infof("zzlin getnfsVolumeOptions volOptioins: %v", volOptions)
 	var (
 		ok bool
 	)
@@ -192,12 +188,10 @@ func getnfsVolumeOptions(volOptions map[string]string, disableInUseChecks bool) 
 
 func (cs *ControllerServer) checkNfsStatus(nfsVol *nfsVolume, req *csi.CreateVolumeRequest, volSizeMiB int) error {
 	// TODO
-
 	return nil
 }
 
-// DeleteVolume deletes the volume in backend and removes the volume metadata
-// from store
+// DeleteVolume deletes the volume in backend
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.Warningf("invalid delete volume req: %v", protosanitizer.StripSecrets(req))
@@ -214,21 +208,28 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}()
 
 	nfsVol := &nfsVolume{}
-	//if err := cs.MetadataStore.Get(volumeID, nfsVol); err != nil {
-	//	if err, ok := err.(*util.CacheEntryNotFound); ok {
-	//		glog.V(3).Infof("metadata for volume %s not found, assuming the volume to be already deleted (%v)", volumeID, err)
-	//		return &csi.DeleteVolumeResponse{}, nil
-	//	}
-	//
-	//	return nil, err
-	//}
-
 	volName := nfsVol.VolName
-	// Deleting rbd image
-
-	// pvName := strings.Join([]string{nfsVol.VolName}, "-")
 	fullPath := filepath.Join(mountPath, volumeID)
 	glog.Infof("deleting volume %s path: %v", volName, fullPath)
+
+	mounter := mount.New("")
+	err := mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
+	if err != nil {
+		if os.IsPermission(err) {
+			return nil, status.Error(codes.PermissionDenied, err.Error())
+		}
+		if strings.Contains(err.Error(), "invalid argument") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	defer func() {
+		err = mount.CleanupMountPoint(mountPath, mounter, false)
+		if err != nil {
+			glog.Errorf("umount %v error: %v", mountPath, err)
+		}
+	}()
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		glog.Warningf("path %s does not exist, deletion skipped", fullPath)

@@ -84,7 +84,7 @@ func (d *driver) Run() {
 	}
 
 	d.ids = csicommon.NewDefaultIdentityServer(d.csiDriver)
-	d.cs = getControllerServer(d.csiDriver)
+	d.cs = NewControllerServer(d.csiDriver)
 
 	s.Start(d.endpoint, d.ids, d.cs, d.ns)
 	s.Wait()
