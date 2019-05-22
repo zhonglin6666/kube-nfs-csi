@@ -37,6 +37,7 @@ spec:
               mountPath: /plugin
             - name: registration-dir
               mountPath: /registration
+
         - name: nfs
           securityContext:
             privileged: true
@@ -61,6 +62,7 @@ spec:
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
+
       volumes:
         - name: plugin-dir
           hostPath:

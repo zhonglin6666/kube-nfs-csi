@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wordpress-mysql
+  name: wordpress-mysql-2
   labels:
-    app: wordpress
-    tier: mysql
+    app: wordpress-2
+    tier: mysql-2
 spec:
   selector:
     matchLabels:
-      app: wordpress
-      tier: mysql
+      app: wordpress-2
+      tier: mysql-2
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: wordpress
-        tier: mysql
+        app: wordpress-2
+        tier: mysql-2
     spec:
       containers:
         - image: mysql:5.6
-          name: mysql
+          name: mysql-2
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: changeme

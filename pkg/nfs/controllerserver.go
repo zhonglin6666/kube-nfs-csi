@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
@@ -12,12 +11,10 @@ import (
 	"github.com/kubernetes-csi/drivers/pkg/csi-common"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	"github.com/zhonglin6666/kube-nfs-csi/pkg/util"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
-
-	"github.com/zhonglin6666/kube-nfs-csi/pkg/util"
 )
 
 const (
@@ -93,36 +90,30 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	}
 
-	mounter := mount.New("")
-	err = mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
-	if err != nil {
-		if os.IsPermission(err) {
-			return nil, status.Error(codes.PermissionDenied, err.Error())
-		}
-		if strings.Contains(err.Error(), "invalid argument") {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	defer func() {
-		err = mount.CleanupMountPoint(mountPath, mounter, false)
-		if err != nil {
-			glog.Errorf("umount %v error: %v", mountPath, err)
-		}
-	}()
+	//mounter := mount.New("")
+	//nfsPath := fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share)
+	//err = mounter.Mount(nfsPath, mountPath, "nfs", nil)
+	//if err != nil {
+	//	if os.IsPermission(err) {
+	//		return nil, status.Error(codes.PermissionDenied, err.Error())
+	//	}
+	//	if strings.Contains(err.Error(), "invalid argument") {
+	//		return nil, status.Error(codes.InvalidArgument, err.Error())
+	//	}
+	//	return nil, status.Error(codes.Internal, err.Error())
+	//}
+	//glog.Infof("mount nfs %v success", nfsPath)
+	//
+	//defer func() {
+	//	err = mount.CleanupMountPoint(mountPath, mounter, false)
+	//	if err != nil {
+	//		glog.Errorf("umount %v error: %v", mountPath, err)
+	//	} else {
+	//		glog.Infof("umount nfs: %v success", nfsPath)
+	//	}
+	//}()
 
 	fullPath := filepath.Join(mountPath, nfsVol.VolID)
-
-	if _, err := os.Stat(fullPath); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
-		glog.Warningf("path %s already exist, deletion skipped", fullPath)
-		return nil, nil
-	}
-
 	if err := os.MkdirAll(fullPath, 0777); err != nil {
 		return nil, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
@@ -201,6 +192,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeID := req.GetVolumeId()
 	util.VolumeNameMutex.LockKey(volumeID)
 
+	if volumeID == "" {
+		return nil, errors.New("volume id is nil")
+	}
+
 	defer func() {
 		if err := util.VolumeNameMutex.UnlockKey(volumeID); err != nil {
 			glog.Warningf("failed to unlock mutex volume:%s %v", volumeID, err)
@@ -212,24 +207,24 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	fullPath := filepath.Join(mountPath, volumeID)
 	glog.Infof("deleting volume %s path: %v", volName, fullPath)
 
-	mounter := mount.New("")
-	err := mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
-	if err != nil {
-		if os.IsPermission(err) {
-			return nil, status.Error(codes.PermissionDenied, err.Error())
-		}
-		if strings.Contains(err.Error(), "invalid argument") {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	defer func() {
-		err = mount.CleanupMountPoint(mountPath, mounter, false)
-		if err != nil {
-			glog.Errorf("umount %v error: %v", mountPath, err)
-		}
-	}()
+	//mounter := mount.New("")
+	//err := mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
+	//if err != nil {
+	//	if os.IsPermission(err) {
+	//		return nil, status.Error(codes.PermissionDenied, err.Error())
+	//	}
+	//	if strings.Contains(err.Error(), "invalid argument") {
+	//		return nil, status.Error(codes.InvalidArgument, err.Error())
+	//	}
+	//	return nil, status.Error(codes.Internal, err.Error())
+	//}
+	//
+	//defer func() {
+	//	err = mount.CleanupMountPoint(mountPath, mounter, false)
+	//	if err != nil {
+	//		glog.Errorf("umount %v error: %v", mountPath, err)
+	//	}
+	//}()
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		glog.Warningf("path %s does not exist, deletion skipped", fullPath)

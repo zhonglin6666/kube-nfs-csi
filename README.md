@@ -83,23 +83,3 @@ If you already have a driver installed, skip to step 4 of the following steps.
 1) Build the nfs driver by running `make`
 2) Create NFS Driver Image, where the image tag would be whatever that is required by your YAML deployment files        `docker build -t quay.io/k8scsi/nfsplugin:v1.0.0 .`
 3) Install the Driver: `kubectl create -f deploy/kubernetes`
-4) Build E2E test binary: `make build-tests`
-5) Run E2E Tests using the following command: `./bin/tests --ginkgo.v --ginkgo.progress --kubeconfig=/var/run/kubernetes/admin.kubeconfig`
-
-
-## Community, discussion, contribution, and support
-
-Learn how to engage with the Kubernetes community on the [community page](http://kubernetes.io/community/).
-
-You can reach the maintainers of this project at:
-
-- [Slack channel](https://kubernetes.slack.com/messages/sig-storage)
-- [Mailing list](https://groups.google.com/forum/#!forum/kubernetes-sig-storage)
-
-
-### Code of conduct
-
-Participation in the Kubernetes community is governed by the [Kubernetes Code of Conduct](code-of-conduct.md).
-
-[owners]: https://git.k8s.io/community/contributors/guide/owners.md
-[Creative Commons 4.0]: https://git.k8s.io/website/LICENSE

@@ -45,7 +45,6 @@ spec:
               mountPath: /csi
 
         - name: csi-attacher
-          #image: zhangzhonglin/k8scsi-attacher:v1.1.0
           image: quay.io/k8scsi/csi-attacher:v1.0.1
           args:
             - "--v=5"
@@ -79,12 +78,13 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /plugin
-#            - name: nfs-client-root
-#              mountPath: /persistentvolumes
+            - name: nfs-server
+              mountPath: /persistentvolumes
+
       volumes:
         - name: socket-dir
           emptyDir:
-#        - name: nfs-client-root
-#          nfs:
-#            server: 192.168.73.184
-#            path: /nfs/data
+        - name: nfs-server
+          nfs:
+            server: 192.168.73.184
+            path: /nfs/data
