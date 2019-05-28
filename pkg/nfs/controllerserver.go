@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
@@ -23,8 +24,15 @@ const (
 	mountPath = "/persistentvolumes"
 )
 
+type nfsServer struct {
+	server string
+	share  string
+}
+
 type ControllerServer struct {
 	*csicommon.DefaultControllerServer
+	lock    *sync.RWMutex
+	nfsInfo map[string]*nfsServer
 }
 
 type nfsVolume struct {
@@ -47,7 +55,8 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 func NewControllerServer(csiDriver *csicommon.CSIDriver) *ControllerServer {
 	return &ControllerServer{
-		csicommon.NewDefaultControllerServer(csiDriver),
+		DefaultControllerServer: csicommon.NewDefaultControllerServer(csiDriver),
+		nfsInfo:                 make(map[string]*nfsServer),
 	}
 }
 
@@ -184,6 +193,7 @@ func (cs *ControllerServer) checkNfsStatus(nfsVol *nfsVolume, req *csi.CreateVol
 
 // DeleteVolume deletes the volume in backend
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	glog.Infof("DeleteVolume req: %v", req.VolumeId)
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.Warningf("invalid delete volume req: %v", protosanitizer.StripSecrets(req))
 		return nil, err
@@ -205,7 +215,6 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	nfsVol := &nfsVolume{}
 	volName := nfsVol.VolName
 	fullPath := filepath.Join(mountPath, volumeID)
-	glog.Infof("deleting volume %s path: %v", volName, fullPath)
 
 	//mounter := mount.New("")
 	//err := mounter.Mount(fmt.Sprintf("%v:%v", nfsVol.Server, nfsVol.Share), mountPath, "nfs", nil)
@@ -226,6 +235,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	//	}
 	//}()
 
+	glog.Infof("deleting volume %s path: %v", volName, fullPath)
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		glog.Warningf("path %s does not exist, deletion skipped", fullPath)
 		return nil, nil
