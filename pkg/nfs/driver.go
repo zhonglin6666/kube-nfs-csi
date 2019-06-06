@@ -67,9 +67,11 @@ func NewDriver(nodeID, endpoint string) *driver {
 	return d
 }
 
-func NewNodeServer(d *driver) (*nodeServer, error) {
+func NewNodeServer(d *driver, server, path string) (*nodeServer, error) {
 	return &nodeServer{
 		DefaultNodeServer: csicommon.NewDefaultNodeServer(d.csiDriver),
+		server:            server,
+		path:              path,
 	}, nil
 }
 
@@ -77,14 +79,23 @@ func (d *driver) Run() {
 	var err error
 	s := csicommon.NewNonBlockingGRPCServer()
 
-	d.ns, err = NewNodeServer(d)
+	server := os.Getenv("NFS_SERVER")
+	//if server == "" {
+	//	glog.Fatal("NFS_SERVER not set")
+	//}
+
+	path := os.Getenv("NFS_PATH")
+	//if path == "" {
+	//	glog.Fatal("NFS_PATH not set")
+	//}
+
+	d.ns, err = NewNodeServer(d, server, path)
 	if err != nil {
-		glog.Infof("failed to start node server, err %v\n", err)
-		os.Exit(-1)
+		glog.Fatal("failed to start node server, err %v\n", err)
 	}
 
 	d.ids = csicommon.NewDefaultIdentityServer(d.csiDriver)
-	d.cs = NewControllerServer(d.csiDriver)
+	d.cs = NewControllerServer(d.csiDriver, server, path)
 
 	s.Start(d.endpoint, d.ids, d.cs, d.ns)
 	s.Wait()

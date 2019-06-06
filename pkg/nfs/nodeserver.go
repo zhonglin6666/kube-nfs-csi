@@ -18,11 +18,11 @@ package nfs
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"os"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/glog"
 	"github.com/kubernetes-csi/drivers/pkg/csi-common"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -33,6 +33,8 @@ import (
 type nodeServer struct {
 	*csicommon.DefaultNodeServer
 	mounter mount.Interface
+	server  string
+	path    string
 }
 
 func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {

@@ -26,13 +26,15 @@ const (
 
 type nfsServer struct {
 	server string
-	share  string
+	path   string
 }
 
 type ControllerServer struct {
 	*csicommon.DefaultControllerServer
 	lock    *sync.RWMutex
 	nfsInfo map[string]*nfsServer
+	server  string
+	path    string
 }
 
 type nfsVolume struct {
@@ -40,6 +42,7 @@ type nfsVolume struct {
 	VolID              string `json:"volID"`
 	Server             string `json:"server"`
 	Share              string `json:"share"`
+	ArchiveOnDelete    string `json:"archiveOnDelete"`
 	Provisioner        string `json:"provisioner"`
 	VolSize            int64  `json:"volSize"`
 	AdminID            string `json:"adminId"`
@@ -53,10 +56,12 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func NewControllerServer(csiDriver *csicommon.CSIDriver) *ControllerServer {
+func NewControllerServer(csiDriver *csicommon.CSIDriver, server, path string) *ControllerServer {
 	return &ControllerServer{
 		DefaultControllerServer: csicommon.NewDefaultControllerServer(csiDriver),
 		nfsInfo:                 make(map[string]*nfsServer),
+		server:                  server,
+		path:                    path,
 	}
 }
 
@@ -132,9 +137,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	glog.Infof("create volume path: %v", fullPath)
 
 	volumeContext := req.GetParameters()
-	if _, ok := volumeContext["share"]; ok {
-		volumeContext["share"] = fmt.Sprintf("%s/%s", nfsVol.Share, nfsVol.VolID)
-	}
+	volumeContext["server"] = cs.server
+	volumeContext["share"] = fmt.Sprintf("%s/%s", cs.path, nfsVol.VolID)
+	//if _, ok := volumeContext["share"]; ok {
+	//	volumeContext["share"] = fmt.Sprintf("%s/%s", nfsVol.Share, nfsVol.VolID)
+	//}
 	glog.Infof("create volume success, path: %v", fullPath)
 
 	return &csi.CreateVolumeResponse{
@@ -168,20 +175,25 @@ func parseVolCreateRequest(req *csi.CreateVolumeRequest) (*nfsVolume, error) {
 }
 
 func getnfsVolumeOptions(volOptions map[string]string, disableInUseChecks bool) (*nfsVolume, error) {
-	var (
-		ok bool
-	)
+	//var (
+	//	ok bool
+	//)
 
 	nfsVol := &nfsVolume{}
-	nfsVol.Server, ok = volOptions["server"]
-	if !ok {
-		return nil, errors.New("missing required parameter pool")
-	}
-
-	nfsVol.Share, ok = volOptions["share"]
-	if !ok {
-		return nil, errors.New("missing required parameter share")
-	}
+	//nfsVol.Server, ok = volOptions["server"]
+	//if !ok {
+	//	return nil, errors.New("missing required parameter pool")
+	//}
+	//
+	//nfsVol.Share, ok = volOptions["share"]
+	//if !ok {
+	//	return nil, errors.New("missing required parameter share")
+	//}
+	//
+	//nfsVol.ArchiveOnDelete, ok = volOptions["volOptions"]
+	//if !ok {
+	//	nfsVol.ArchiveOnDelete = "false"
+	//}
 
 	return nfsVol, nil
 }

@@ -74,6 +74,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: CSI_ENDPOINT
               value: unix://plugin/csi.sock
+            - name: NFS_SERVER
+              value: 192.168.73.184
+            - name: NFS_PATH
+              value: /nfs/data
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir

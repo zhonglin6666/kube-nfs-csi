@@ -6,6 +6,6 @@ metadata:
   name: nfs-storage
 provisioner: csi-nfsplugin
 parameters:
-  server: 192.168.73.184
-  share: /nfs/data
+  #server: 192.168.73.184
+  #share: /nfs/data
   archiveOnDelete: "false"
